@@ -133,7 +133,7 @@ void user_register(int fd, char *cmd) {
         return;
     }
 
-    char id[1024], password[1024];
+    char id[1024], password[1024], temp[1024];
     FILE *fp = fopen("./databases/root/accounts.txt", "a+");
     if(fp == NULL) {
         send(fd, "Account table creation failed\n", DATA_BUFFER_SIZE, 0);
@@ -142,10 +142,12 @@ void user_register(int fd, char *cmd) {
     int flag = 0;
     get_user_data(id, password, cmd, &flag);
 
-    char account_db[1024];
+    char account_db[1024], check_user[1024];
     int isRegistered = 0;
     while (fscanf(fp, "%s", account_db) != EOF){
-        if (!strcmp(account_db, id)) {
+        strcpy(temp, account_db);
+        strcpy(check_user, strtok(temp, ":"));
+        if (!strcmp(check_user, id)) {
             isRegistered = 1;
             break;
         }
@@ -315,7 +317,7 @@ void drop_cmd(int fd, char *message) {
 int get_db_access_info(int fd, char *user_granted, char *db, int *flag) {
     FILE *accPtr = fopen("./databases/root/accounts.txt", "r+");
     char account_db[1024];
-    int db_get = 0, user_get = 0;
+    int db_get = 0, user_get = 0, user_access_exists = 0;
 
     if(!accPtr)
         send(fd, "Error: Cannot get account data\n", 1024, 0);
@@ -332,24 +334,27 @@ int get_db_access_info(int fd, char *user_granted, char *db, int *flag) {
         FILE *filePtr = fopen("./databases/root/databases.txt", "a+");
         FILE *tempPtr = fopen("./databases/root/temp.txt", "a+");
         char tmp[1024], row[1024], check_user[1024], users[1024];
-        user_get = 0;
+        user_access_exists = 0;
         
         if(!filePtr)
             send(fd, "Error: Cannot get database data\n", 1024, 0);
         else {
             while(fgets(row, 1024, filePtr)){
+                if(sscanf(row, "%255[^\n]", tmp) != 1) break;
                 if(strstr(tmp, db)){
+                    // printf("%s\n", tmp);
                     db_get = 1;
                     strcpy(check_user, tmp);
                     strcpy(users, strtok(check_user, ":"));
                     char *user = strtok(users, ",");
                     while(user) {
                         if(!strcmp(user, user_granted)) {
-                            user_get = 1; break;
+                            user_access_exists = 1; break;
                         }
                         user = strtok(NULL, ",");
                     }
-                    if(user_get) {
+                    // printf("%d\n", user_access_exists);
+                    if(user_access_exists) {
                         break;
                     } else{
                         fprintf(tempPtr, "%s,%s:%s\n", users, user_granted, db);
@@ -358,17 +363,13 @@ int get_db_access_info(int fd, char *user_granted, char *db, int *flag) {
                 else fprintf(tempPtr, "%s\n", tmp);
             }
 
-            if(user_get && db_get) {
-                remove("./databases/root/temp.txt");
+            if(user_access_exists && db_get) {
                 *flag = 1;
                 return 0;
-            } else if(!user_get && db_get) {
-                remove("./databases/root/databases.txt");
-                rename("./databases/root/temp.txt", "./databases/root/databases.txt");
+            } else if(!user_access_exists && db_get) {
                 *flag = 0;
                 return 1;
-            } else if(!db_get) {
-                remove("./databases/root/temp.txt");
+            } else if(!user_access_exists) {
                 *flag = 2;
                 return 0;
             }
@@ -395,25 +396,25 @@ void grant_permission_cmd(int fd, char *message) {
         char *temp = strtok(message, " ");
         temp = strtok(NULL, " ");
         strcpy(db_name, strtok(NULL, " "));
-        printf("temp: %s\n", temp);
-        printf("db_name: %s\n", db_name);
+        // printf("temp: %s\n", temp);
+        // printf("db_name: %s\n", db_name);
         if (contains_disallowed_character(db_name)){
             flag = 1;
             return;
         } else{
             temp = strtok(NULL, " ");
-            printf("temp: %s\n", temp);
+            // printf("temp: %s\n", temp);
             if(db_name && !strcmp(temp, "INTO")){
                 strcpy(id, strtok(NULL, " "));
-                printf("id: %s\n", id);
+                // printf("id: %s\n", id);
                 if (strstr(id, ";")) id[strlen(id)] = "\0";
             } else flag = 2;
         }
     }
 
     if(flag == 1) {
-        printf("[Database doesn't exists] %s:%s\n", id, db_name);
-        send(fd, "Error: Database doesn't exists\n", DATA_BUFFER_SIZE, 0);
+        printf("[Database name is invalid] %s:%s\n", id, db_name);
+        send(fd, "Error: Database name is invalid\n", DATA_BUFFER_SIZE, 0);
     }
     else if(flag == 2)  {
         printf("[Invalid argument] %s:%s\n", id, db_name);
@@ -422,14 +423,18 @@ void grant_permission_cmd(int fd, char *message) {
     else {
         flag = 0;
         if(get_db_access_info(fd, id, db_name, &flag)){
+            remove("./databases/root/databases.txt");
+            rename("./databases/root/temp.txt", "./databases/root/databases.txt");
             printf("[Access granted] %s:%s\n", id, db_name);
             send(fd, "Access granted\n", DATA_BUFFER_SIZE, 0);
         } else{
             if(flag == 1){
+                remove("./databases/root/temp.txt");
                 printf("[User already have access] %s:%s\n", id, db_name);
                 send(fd, "Error: The user already have access to the database\n", DATA_BUFFER_SIZE, 0);
             }
             else if(flag == 2){
+                remove("./databases/root/temp.txt");
                 printf("[Database doesn't exist] %s:%s\n", id, db_name);
                 send(fd, "Error: Database doesn't exist\n", DATA_BUFFER_SIZE, 0);
             }
