@@ -340,7 +340,7 @@ int get_db_access_info(int fd, char *user_granted, char *db, int *flag) {
             send(fd, "Error: Cannot get database data\n", 1024, 0);
         else {
             while(fgets(row, 1024, filePtr)){
-                if(sscanf(row, "%255[^\n]", tmp) != 1) break;
+                if(sscanf(row, "%1023[^\n]", tmp) != 1) break;
                 if(strstr(tmp, db)){
                     // printf("%s\n", tmp);
                     db_get = 1;
@@ -362,6 +362,9 @@ int get_db_access_info(int fd, char *user_granted, char *db, int *flag) {
                 }
                 else fprintf(tempPtr, "%s\n", tmp);
             }
+            
+            fclose(tempPtr);
+            fclose(filePtr);
 
             if(user_access_exists && db_get) {
                 *flag = 1;
@@ -374,6 +377,7 @@ int get_db_access_info(int fd, char *user_granted, char *db, int *flag) {
                 return 0;
             }
         }
+
     } else {
         *flag = 3;
         return 0;
